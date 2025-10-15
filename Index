@@ -1,0 +1,2699 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pratofirme - Mapa de Doações</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --primary: #4f8bc9;
+            --secondary: #3ba97c;
+            --accent: #ff6b6b;
+            --light: #f8fafc;
+            --dark: #0f172a;
+            --gold: #ffd700;
+        }
+        
+        #map {
+            height: 500px;
+            width: 100%;
+            border-radius: 12px;
+            z-index: 1;
+        }
+        
+        .toast-enter { transform: translateY(-8px); opacity: 0; }
+        .toast-show { transform: translateY(0); opacity: 1; transition: all .28s ease; }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+        
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            margin-left: -10px;
+            margin-top: -10px;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        .input-error {
+            border-color: #e53e3e !important;
+            box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.1);
+        }
+        
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        
+        @keyframes shake {
+            10%, 90% { transform: translateX(-1px); }
+            20%, 80% { transform: translateX(2px); }
+            30%, 50%, 70% { transform: translateX(-4px); }
+            40%, 60% { transform: translateX(4px); }
+        }
+        
+        .tab-button {
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .tab-button.active {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 4px 8px rgba(79, 139, 201, 0.2);
+        }
+        
+        .btn-gradient {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gradient:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(79, 139, 201, 0.25);
+        }
+        
+        .donation-card {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 8px 20px rgba(39, 174, 96, 0.2);
+            text-align: center;
+            margin-bottom: 25px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .donation-card::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+        }
+        
+        .points-value {
+            font-size: 64px;
+            font-weight: bold;
+            margin: 15px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .points-animation {
+            animation: pulse 1s;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .notification-dot {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 18px;
+            height: 18px;
+            background-color: #e53e3e;
+            border-radius: 50%;
+            border: 2px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: white;
+            font-weight: bold;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .verified-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #4f8bc9, #3a74b0);
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            margin-left: 4px;
+        }
+        
+        .gold-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--gold), #daa520);
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            margin-left: 4px;
+        }
+        
+        .business-type-supermarket { color: #3b82f6; }
+        .business-type-bakery { color: #f59e0b; }
+        .business-type-garden { color: #10b981; }
+        .business-type-restaurant { color: #ef4444; }
+        .business-type-other { color: #8b5cf6; }
+        
+        .lot-expiring {
+            border-left: 4px solid #e53e3e;
+            background-color: #fef2f2;
+        }
+        
+        .lot-available {
+            border-left: 4px solid #10b981;
+            background-color: #f0fdf4;
+        }
+        
+        .like-btn.liked {
+            color: #e53e3e !important;
+        }
+        
+        .like-btn.liked i {
+            color: #e53e3e !important;
+        }
+        
+        .post-images {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 12px;
+        }
+        
+        .post-images img {
+            width: 100%;
+            border-radius: 8px;
+            object-fit: cover;
+            height: 150px;
+            cursor: pointer;
+        }
+        
+        .post-images.single img {
+            grid-column: span 2;
+            height: 200px;
+        }
+        
+        .post-images.three img:first-child {
+            grid-column: span 2;
+            height: 200px;
+        }
+        
+        .image-modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .image-modal-content {
+            max-width: 90%;
+            max-height: 90%;
+        }
+        
+        .close-modal {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+        }
+        
+        .image-preview {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .image-preview-item {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .image-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .image-preview-item button {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background: rgba(255,255,255,0.8);
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        /* Estilos para o Chat */
+        .chat-bubble {
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            margin-bottom: 8px;
+            position: relative;
+            transition: all 0.2s ease;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .chat-bubble.self {
+            background: linear-gradient(135deg, var(--primary), #3a74b0);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 12px rgba(79, 139, 201, 0.3);
+        }
+        
+        .chat-bubble.other {
+            background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+            color: var(--dark);
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        
+        .chat-bubble.replying {
+            border: 2px solid var(--secondary);
+            transform: scale(1.02);
+        }
+        
+        .chat-time {
+            font-size: 0.7rem;
+            opacity: 0.7;
+            margin-top: 4px;
+            display: block;
+            text-align: right;
+        }
+        
+        .chat-reply {
+            font-size: 0.8rem;
+            padding: 8px;
+            background-color: rgba(0, 0, 0, 0.05);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            border-left: 3px solid var(--secondary);
+        }
+        
+        .online-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #22c55e;
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            border: 2px solid white;
+            box-shadow: 0 0 0 2px var(--primary);
+        }
+        
+        .chat-item {
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+            border-radius: 12px;
+        }
+        
+        .chat-item.active {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border-left: 3px solid var(--primary);
+        }
+        
+        .chat-item.unread {
+            background: linear-gradient(135deg, #f0f9ff, #dbeafe);
+        }
+        
+        .reply-indicator {
+            background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: slideIn 0.3s ease;
+            border-left: 4px solid var(--secondary);
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message-options {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .chat-bubble:hover .message-options {
+            opacity: 1;
+        }
+        
+        .search-chat {
+            background-color: #f8fafc;
+            border-radius: 20px;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        
+        .search-chat:focus-within {
+            box-shadow: 0 0 0 3px rgba(79, 139, 201, 0.1);
+            border-color: var(--primary);
+        }
+        
+        .typing-indicator {
+            display: flex;
+            padding: 10px 15px;
+            background-color: #f1f5f9;
+            border-radius: 18px;
+            width: fit-content;
+            margin-bottom: 8px;
+            align-items: center;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+        
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #64748b;
+            margin: 0 2px;
+            animation: typingAnimation 1.4s infinite ease-in-out;
+        }
+        
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typingAnimation {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-green-50 text-gray-800 min-h-screen">
+
+    <!-- Toasts -->
+    <div id="toasts" class="fixed top-5 right-5 z-50 space-y-2"></div>
+
+    <!-- Modal para visualização de imagem -->
+    <div id="imageModal" class="image-modal">
+        <span class="close-modal">&times;</span>
+        <img class="image-modal-content" id="modalImage">
+    </div>
+
+    <!-- Header -->
+    <header class="sticky top-0 bg-white/80 backdrop-blur-sm border-b border-gray-200 z-30 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-lg bg-gradient-to-br from-[#4f8bc9] to-[#3ba97c] text-white shadow-md flex items-center justify-center">
+                    <i class="fas fa-hands-helping"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-[#0f172a]">Pratofirme</h1>
+                    <div class="text-xs text-gray-500">Conectar quem ajuda a quem precisa</div>
+                </div>
+            </div>
+
+            <nav class="hidden md:flex items-center gap-4 text-sm">
+                <button onclick="navTo('feed')" id="navFeed" class="px-3 py-1 rounded-lg hover:bg-slate-50 transition-all flex items-center gap-1">
+                    <i class="fas fa-home"></i> Feed
+                </button>
+                <button onclick="navTo('map')" id="navMap" class="px-3 py-1 rounded-lg hover:bg-slate-50 transition-all flex items-center gap-1">
+                    <i class="fas fa-map"></i> Mapa
+                </button>
+                <button onclick="navTo('chats')" id="navChats" class="px-3 py-1 rounded-lg hover:bg-slate-50 transition-all flex items-center gap-1 relative">
+                    <i class="fas fa-comments"></i> Chat
+                    <span id="chat-notification" class="notification-dot hidden"></span>
+                </button>
+                <button onclick="navTo('donations')" id="navDonations" class="px-3 py-1 rounded-lg hover:bg-slate-50 transition-all flex items-center gap-1">
+                    <i class="fas fa-hand-holding-heart"></i> Doe
+                </button>
+                <button onclick="navTo('requests')" id="navRequests" class="px-3 py-1 rounded-lg hover:bg-slate-50 transition-all flex items-center gap-1 relative">
+                    <i class="fas fa-shopping-basket"></i> Solicitar
+                    <span id="request-notification" class="notification-dot hidden"></span>
+                </button>
+                <button onclick="navTo('account')" id="navAccount" class="px-3 py-1 rounded-lg hover:bg-slate-50 transition-all flex items-center gap-1">
+                    <i class="fas fa-user"></i> Conta
+                </button>
+            </nav>
+
+            <div class="flex items-center gap-3">
+                <div id="headerUser" class="hidden items-center gap-2">
+                    <div class="relative">
+                        <img id="headerAvatar" src="" class="w-9 h-9 rounded-full object-cover border-2 border-white shadow" alt="avatar"/>
+                        <span id="headerStatus" class="online-status"></span>
+                    </div>
+                    <div class="text-sm hidden md:block" id="headerName"></div>
+                </div>
+                <button id="btnLoginHeader" class="btn-gradient px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2" onclick="openLogin()">
+                    <i class="fas fa-sign-in-alt"></i> Entrar
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main -->
+    <main class="max-w-6xl mx-auto px-4 py-6">
+
+        <!-- Auth card (centered) -->
+        <section id="screen-auth" class="">
+            <div class="max-w-md mx-auto bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+                <div class="text-center mb-4">
+                    <div class="w-16 h-16 rounded-full bg-gradient-to-br from-[#4f8bc9] to-[#3ba97c] text-white mx-auto shadow-md flex items-center justify-center">
+                        <i class="fas fa-hands-helping text-xl"></i>
+                    </div>
+                </div>
+                <h2 class="text-2xl font-bold mb-2 text-center text-[#0f172a]">Bem-vindo ao Pratofirme</h2>
+                <p class="text-sm text-gray-600 mb-6 text-center">Conecte pessoas e movimentos sociais — tudo em um só lugar.</p>
+
+                <div id="auth-forms">
+                    <!-- Login -->
+                    <div id="login-view">
+                        <div class="mb-4">
+                            <div class="relative">
+                                <i class="fas fa-user absolute left-3 top-3 text-gray-400"></i>
+                                <input id="loginEmail" type="text" placeholder="Email ou nome de usuário" class="w-full border border-gray-200 pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" autocomplete="username"/>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <div class="relative">
+                                <i class="fas fa-lock absolute left-3 top-3 text-gray-400"></i>
+                                <input id="loginPass" type="password" placeholder="Senha" class="w-full border border-gray-200 pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" autocomplete="current-password"/>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mb-4">
+                            <button id="loginButton" class="flex-1 btn-gradient py-3 rounded-lg flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all" onclick="doLogin()">
+                                <i class="fas fa-sign-in-alt"></i> <span>Entrar</span>
+                            </button>
+                            <button class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-lg hover:bg-gray-200 transition-all flex items-center justify-center gap-2" onclick="showRegister()">
+                                <i class="fas fa-user-plus"></i> <span>Criar conta</span>
+                            </button>
+                        </div>
+                        <div class="text-center">
+                            <a href="#" class="text-sm text-[#4f8bc9] hover:underline transition-all" onclick="showForgotPassword()">
+                                <i class="fas fa-key"></i> Esqueceu sua senha?
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Register (hidden) -->
+                    <div id="register-view" class="hidden">
+                        <div class="mb-4">
+                            <div class="relative">
+                                <i class="fas fa-user absolute left-3 top-3 text-gray-400"></i>
+                                <input id="regNome" placeholder="Nome completo" class="w-full border border-gray-200 pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" autocomplete="name"/>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <div class="relative">
+                                <i class="fas fa-at absolute left-3 top-3 text-gray-400"></i>
+                                <input id="regUsuario" placeholder="@username" class="w-full border border-gray-200 pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" autocomplete="username"/>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <div class="relative">
+                                <i class="fas fa-envelope absolute left-3 top-3 text-gray-400"></i>
+                                <input id="regEmail" type="email" placeholder="Email" class="w-full border border-gray-200 pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" autocomplete="email"/>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <div class="relative">
+                                <i class="fas fa-lock absolute left-3 top-3 text-gray-400"></i>
+                                <input id="regPass" type="password" placeholder="Senha" class="w-full border border-gray-200 pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" autocomplete="new-password"/>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <div class="relative">
+                                <i class="fas fa-lock absolute left-3 top-3 text-gray-400"></i>
+                                <input id="regPass2" type="password" placeholder="Confirmar senha" class="w-full border border-gray-200 pl-10 pr-4 py-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" autocomplete="new-password"/>
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <label class="flex items-center">
+                                <input type="checkbox" id="isBusiness" class="mr-2 rounded">
+                                <span class="text-sm">Sou um comércio/empresa</span>
+                            </label>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="registerButton" class="flex-1 bg-[#3ba97c] text-white py-3 rounded-lg hover:opacity-90 transition-all flex items-center gap-2" onclick="doRegister()">
+                                <i class="fas fa-check"></i> <span>Criar</span>
+                            </button>
+                            <button class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-lg hover:bg-gray-200 transition-all flex items-center gap-2" onclick="showLogin()">
+                                <i class="fas fa-arrow-left"></i> <span>Voltar</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- App screens -->
+        <section id="screen-app" class="hidden space-y-6">
+
+            <!-- Composer / feed composer -->
+            <div id="composer" class="bg-white rounded-2xl p-4 shadow-lg border border-gray-100 flex gap-4">
+                <img id="composerAvatar" src="" class="w-14 h-14 rounded-full object-cover border-2 border-white shadow" alt="avatar"/>
+                <div class="flex-1">
+                    <textarea id="composerText" rows="3" placeholder="Compartilhe uma necessidade, projeto ou pedido de ajuda..." class="w-full border border-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all"></textarea>
+                    
+                    <!-- Área de preview de imagens -->
+                    <div id="imagePreview" class="image-preview mb-3"></div>
+                    
+                    <div class="flex items-center justify-between mt-3">
+                        <div class="flex items-center gap-3">
+                            <div class="text-sm text-gray-500"><i class="fas fa-globe-americas"></i> Público</div>
+                            <label for="postImages" class="cursor-pointer text-[#4f8bc9] hover:text-[#3a74b0] transition-all">
+                                <i class="fas fa-image"></i> Adicionar imagens
+                            </label>
+                            <input id="postImages" type="file" accept="image/*" multiple class="hidden"/>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="px-4 py-2 btn-gradient rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2" onclick="createPost()">
+                                <i class="fas fa-paper-plane"></i> Publicar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feed -->
+            <div id="feed-screen" class="">
+                <div id="feedList" class="space-y-4"></div>
+            </div>
+
+            <!-- Mapa -->
+            <div id="map-screen" class="hidden">
+                <div class="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                        <h2 class="text-xl font-semibold">Mapa de Comércios</h2>
+                        <div class="flex flex-wrap gap-2">
+                            <button id="getLocationBtn" class="bg-[#4f8bc9] text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-md hover:shadow-lg transition-all">
+                                <i class="fas fa-location-arrow"></i> Minha Localização
+                            </button>
+                            <select id="businessFilter" class="border border-gray-200 p-2 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all">
+                                <option value="all">Todos os comércios</option>
+                                <option value="supermarket">Supermercados</option>
+                                <option value="bakery">Padarias</option>
+                                <option value="garden">Hortas</option>
+                                <option value="restaurant">Restaurantes</option>
+                                <option value="other">Outros</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="map" class="mb-4"></div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-slate-50 p-4 rounded-lg">
+                            <h3 class="font-semibold mb-3">Legenda</h3>
+                            <div class="space-y-2">
+                                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full bg-blue-500"></div> <span>Supermercado</span></div>
+                                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full bg-yellow-500"></div> <span>Padaria</span></div>
+                                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full bg-green-500"></div> <span>Horta</span></div>
+                                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full bg-red-500"></div> <span>Restaurante</span></div>
+                                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full bg-purple-500"></div> <span>Outros</span></div>
+                                <div class="flex items-center gap-2"><i class="fas fa-map-pin text-red-500"></i> <span>Sua localização</span></div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-slate-50 p-4 rounded-lg">
+                            <h3 class="font-semibold mb-3">Comércios Próximos</h3>
+                            <div id="nearbyBusinesses" class="space-y-3 max-h-60 overflow-y-auto">
+                                <div class="text-center py-4 text-gray-500">
+                                    <i class="fas fa-store text-xl mb-2"></i>
+                                    <p>Use o mapa para visualizar comércios próximos</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chats -->
+            <div id="chats-screen" class="hidden">
+                <div class="grid md:grid-cols-3 gap-4 h-[70vh]">
+                    <div class="col-span-1 bg-white rounded-2xl p-4 shadow-lg border border-gray-100 flex flex-col">
+                        <h3 class="font-semibold mb-3 text-lg flex items-center gap-2"><i class="fas fa-comments text-[#4f8bc9]"></i> Conversas</h3>
+                        <div class="search-chat mb-4">
+                            <i class="fas fa-search text-gray-400 ml-1"></i>
+                            <input type="text" placeholder="Buscar contato..." class="w-full bg-transparent outline-none text-sm ml-2" oninput="filterChats(this.value)">
+                        </div>
+                        <div id="chatList" class="flex-1 overflow-auto space-y-2"></div>
+                    </div>
+                    <div class="col-span-2 bg-white rounded-2xl p-4 shadow-lg border border-gray-100 flex flex-col">
+                        <div id="chatHeader" class="font-semibold mb-3 text-lg flex items-center gap-2 pb-3 border-b">
+                            <i class="fas fa-user-circle text-[#4f8bc9]"></i>
+                            <span id="chatWithUser">Selecione uma conversa</span>
+                            <span id="chatStatus" class="text-xs text-gray-500"></span>
+                        </div>
+                        <div id="replyIndicator" class="reply-indicator hidden">
+                            <div>
+                                <div class="text-xs text-gray-500">Respondendo a</div>
+                                <div id="replyText" class="text-sm"></div>
+                            </div>
+                            <button onclick="cancelReply()" class="text-gray-500 hover:text-gray-700 transition-all"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div id="chatWindow" class="flex-1 overflow-auto p-4 mb-3 flex flex-col space-y-2"></div>
+                        <div class="flex gap-2 pt-3 border-t">
+                            <input id="chatMsg" class="flex-1 border border-gray-200 p-3 rounded-full focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" placeholder="Escreva uma mensagem..." onkeypress="if(event.key==='Enter') sendChat()"/>
+                            <button class="btn-gradient px-5 rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-all" onclick="sendChat()">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Doações -->
+            <div id="donations-screen" class="hidden">
+                <div class="donation-card">
+                    <h2 class="text-2xl font-bold mb-4">Seus Pontos de Doação</h2>
+                    <div class="points-value" id="points-counter">0</div>
+                    <p class="text-lg">Cada 1kg de alimento doado = 100 pontos</p>
+                </div>
+                
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+                        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                            <i class="fas fa-gift text-[#e74c3c]"></i>
+                            Faça uma Doação
+                        </h2>
+                        
+                        <!-- Tabs para tipo de doador -->
+                        <div class="flex gap-2 mb-6 bg-gray-100 p-1 rounded-lg">
+                            <div class="tab-button active" data-tab="individual">Doador Individual</div>
+                            <div class="tab-button" data-tab="business" id="businessTabButton">Comércio</div>
+                        </div>
+                        
+                        <!-- Doação Individual -->
+                        <div id="tab-individual" class="tab-panel">
+                            <form class="space-y-4" id="individual-donation-form">
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-utensils text-[#3498db]"></i>
+                                        Tipo de Alimento
+                                    </label>
+                                    <select id="food-type" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                        <option value="" disabled selected>Selecione o tipo de alimento</option>
+                                        <option value="arroz">Arroz</option>
+                                        <option value="feijao">Feijão</option>
+                                        <option value="macarrao">Macarrão</option>
+                                        <option value="oleo">Óleo</option>
+                                        <option value="acucar">Açúcar</option>
+                                        <option value="cafe">Café</option>
+                                        <option value="farinha">Farinha</option>
+                                        <option value="enlatados">Enlatados</option>
+                                        <option value="outros">Outros</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-weight-hanging text-[#3498db]"></i>
+                                        Quantidade (kg)
+                                    </label>
+                                    <input type="number" id="quantity" min="0.1" step="0.1" placeholder="Ex: 2.5" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                </div>
+                                
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-calendar-alt text-[#3498db]"></i>
+                                        Data da Doação
+                                    </label>
+                                    <input type="date" id="donation-date" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                </div>
+                                
+                                <button type="submit" class="w-full bg-[#e74c3c] text-white py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 font-semibold">
+                                    <i class="fas fa-hand-holding-heart"></i>
+                                    Registrar Doação Individual
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <!-- Doação de Comércio -->
+                        <div id="tab-business" class="tab-panel hidden">
+                            <form class="space-y-4" id="business-donation-form">
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-boxes text-[#3498db]"></i>
+                                        Cadastrar Lote
+                                    </label>
+                                    <select id="lot-food-type" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                        <option value="" disabled selected>Selecione o tipo de alimento</option>
+                                        <option value="arroz">Arroz</option>
+                                        <option value="feijao">Feijão</option>
+                                        <option value="macarrao">Macarrão</option>
+                                        <option value="oleo">Óleo</option>
+                                        <option value="acucar">Açúcar</option>
+                                        <option value="cafe">Café</option>
+                                        <option value="farinha">Farinha</option>
+                                        <option value="enlatados">Enlatados</option>
+                                        <option value="outros">Outros</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-weight-hanging text-[#3498db]"></i>
+                                        Quantidade Total (kg)
+                                    </label>
+                                    <input type="number" id="lot-quantity" min="1" step="1" placeholder="Ex: 50" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                </div>
+                                
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-calendar-alt text-[#3498db]"></i>
+                                        Data de Validade
+                                    </label>
+                                    <input type="date" id="lot-expiry" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                </div>
+                                
+                                <button type="submit" class="w-full bg-[#3498db] text-white py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 font-semibold">
+                                    <i class="fas fa-box"></i>
+                                    Cadastrar Lote
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <div class="mt-6 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                            <h3 class="font-semibold mb-2 flex items-center gap-2"><i class="fas fa-info-circle text-blue-500"></i> Como funciona?</h3>
+                            <p class="text-sm">A cada 1kg de alimento não perecível doado, você recebe 100 pontos. Comércios podem cadastrar lotes próximos ao vencimento para doação.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+                        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                            <i class="fas fa-history text-[#3498db]"></i>
+                            Histórico de Doações
+                        </h2>
+                        <div id="history-list" class="space-y-4 max-h-96 overflow-y-auto">
+                            <div class="text-center py-10 text-gray-500">
+                                <i class="fas fa-inbox text-3xl mb-3"></i>
+                                <p>Nenhuma doação registrada ainda.</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Lotes do Comércio -->
+                        <div id="business-lots-section" class="mt-6 hidden">
+                            <h3 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                                <i class="fas fa-boxes text-[#f59e0b]"></i>
+                                Meus Lotes
+                            </h3>
+                            <div id="business-lots" class="space-y-3 max-h-60 overflow-y-auto">
+                                <!-- Lotes serão inseridos aqui via JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Solicitações -->
+            <div id="requests-screen" class="hidden">
+                <div class="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+                    <h2 class="text-xl font-semibold mb-4">Solicitar Alimentos</h2>
+                    
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <form id="request-form" class="space-y-4">
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-users text-[#3498db]"></i>
+                                        Quantas pessoas vivem na sua casa?
+                                    </label>
+                                    <input type="number" id="household-size" min="1" max="20" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                </div>
+                                
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-money-bill-wave text-[#3498db]"></i>
+                                        Renda mensal familiar (R$)
+                                    </label>
+                                    <select id="monthly-income" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                        <option value="" disabled selected>Selecione a faixa de renda</option>
+                                        <option value="0-1000">Até R$ 1.000</option>
+                                        <option value="1000-2000">R$ 1.000 - R$ 2.000</option>
+                                        <option value="2000-3000">R$ 2.000 - R$ 3.000</option>
+                                        <option value="3000+">Acima de R$ 3.000</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                                        <i class="fas fa-utensils text-[#3498db]"></i>
+                                        Qual alimento você precisa?
+                                    </label>
+                                    <select id="requested-food" class="w-full border border-gray-200 p-3 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" required>
+                                        <option value="" disabled selected>Selecione o alimento</option>
+                                        <option value="arroz">Arroz</option>
+                                        <option value="feijao">Feijão</option>
+                                        <option value="macarrao">Macarrão</option>
+                                        <option value="oleo">Óleo</option>
+                                        <option value="acucar">Açúcar</option>
+                                        <option value="cafe">Café</option>
+                                        <option value="farinha">Farinha</option>
+                                        <option value="enlatados">Enlatados</option>
+                                        <option value="outros">Outros</option>
+                                    </select>
+                                </div>
+                                
+                                <button type="submit" class="w-full bg-[#3ba97c] text-white py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 font-semibold">
+                                    <i class="fas fa-search"></i>
+                                    Buscar Alimentos Disponíveis
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <div>
+                            <div id="request-results" class="bg-slate-50 p-4 rounded-lg h-full">
+                                <h3 class="font-semibold mb-3">Resultados da Busca</h3>
+                                <div id="available-donations" class="space-y-3 max-h-80 overflow-y-auto">
+                                    <div class="text-center py-10 text-gray-500">
+                                        <i class="fas fa-search text-xl mb-2"></i>
+                                        <p>Preencha o formulário para buscar alimentos disponíveis</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Solicitações Abertas -->
+                    <div class="mt-6">
+                        <h3 class="text-lg font-semibold mb-3">Suas Solicitações Abertas</h3>
+                        <div id="open-requests" class="space-y-3">
+                            <div class="text-center py-4 text-gray-500">
+                                <i class="fas fa-clipboard-list text-xl mb-2"></i>
+                                <p>Nenhuma solicitação aberta no momento</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account -->
+            <div id="account-screen" class="hidden">
+                <div class="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 max-w-2xl mx-auto">
+                    <div class="flex flex-col items-center mb-4">
+                        <div class="relative">
+                            <img id="profilePreview" src="" class="w-28 h-28 rounded-full object-cover border-2 border-white shadow" alt="perfil"/>
+                            <label for="profilePicInput" class="absolute bottom-0 right-0 bg-[#4f8bc9] text-white p-2 rounded-full cursor-pointer shadow-md hover:shadow-lg transition-all">
+                                <i class="fas fa-camera"></i>
+                            </label>
+                        </div>
+                        <input id="profilePicInput" type="file" accept="image/*" class="hidden"/>
+                        <div class="w-full mt-4">
+                            <label class="text-sm text-gray-600 flex items-center gap-1"><i class="fas fa-user"></i> Nome</label>
+                            <input id="accountName" class="w-full border border-gray-200 p-2 rounded-lg mb-2 focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all"/>
+                            <label class="text-sm text-gray-600 flex items-center gap-1"><i class="fas fa-at"></i> @username</label>
+                            <input id="accountUser" class="w-full border border-gray-200 p-2 rounded-lg mb-2 focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all"/>
+                            <label class="text-sm text-gray-600 flex items-center gap-1"><i class="fas fa-info-circle"></i> Biografia</label>
+                            <textarea id="accountBio" class="w-full border border-gray-200 p-2 rounded-lg mb-3 focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all" maxlength="150"></textarea>
+                            
+                            <!-- Informações do comércio -->
+                            <div id="business-info" class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 hidden">
+                                <h3 class="font-semibold mb-2 flex items-center gap-2"><i class="fas fa-store"></i> Informações do Comércio</h3>
+                                <div class="space-y-2">
+                                    <div>
+                                        <label class="text-sm text-gray-600">Nome do Estabelecimento</label>
+                                        <input id="businessName" class="w-full border border-gray-200 p-2 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all"/>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-gray-600">Tipo de Comércio</label>
+                                        <select id="businessType" class="w-full border border-gray-200 p-2 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all">
+                                            <option value="supermarket">Supermercado</option>
+                                            <option value="bakery">Padaria</option>
+                                            <option value="garden">Horta</option>
+                                            <option value="restaurant">Restaurante</option>
+                                            <option value="other">Outro</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-gray-600">Endereço</label>
+                                        <input id="businessAddress" class="w-full border border-gray-200 p-2 rounded-lg focus:ring-2 focus:ring-[#4f8bc9] focus:border-transparent outline-none transition-all"/>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="flex gap-2">
+                                <button class="bg-[#3ba97c] text-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2" onclick="saveAccount()">
+                                    <i class="fas fa-save"></i> Salvar
+                                </button>
+                                <button class="bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200 transition-all flex items-center gap-2" onclick="doLogout()">
+                                    <i class="fas fa-sign-out-alt"></i> Sair
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Floating bottom nav for mobile -->
+    <div class="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-full shadow-lg px-4 py-2 z-40 border border-gray-100">
+        <div class="flex gap-5">
+            <button onclick="navTo('feed')" class="text-[#4f8bc9] text-xl transition-all hover:scale-110"><i class="fas fa-home"></i></button>
+            <button onclick="navTo('map')" class="text-[#3ba97c] text-xl transition-all hover:scale-110"><i class="fas fa-map"></i></button>
+            <button onclick="navTo('chats')" class="text-[#155e75] text-xl relative transition-all hover:scale-110">
+                <i class="fas fa-comments"></i>
+                <span id="mobile-chat-notification" class="notification-dot hidden"></span>
+            </button>
+            <button onclick="navTo('donations')" class="text-[#e74c3c] text-xl transition-all hover:scale-110"><i class="fas fa-hand-holding-heart"></i></button>
+            <button onclick="navTo('requests')" class="text-[#f4c542] text-xl relative transition-all hover:scale-110">
+                <i class="fas fa-shopping-basket"></i>
+                <span id="mobile-request-notification" class="notification-dot hidden"></span>
+            </button>
+            <button onclick="navTo('account')" class="text-[#8b5cf6] text-xl transition-all hover:scale-110"><i class="fas fa-user"></i></button>
+        </div>
+    </div>
+
+    <script>
+        /* ========= Utilities: toasts, storage helpers ========= */
+        function toast(msg, type='info', duration=3500){
+            const container = document.getElementById('toasts');
+            const el = document.createElement('div');
+            el.className = 'px-4 py-3 rounded-lg shadow text-white max-w-xs flex items-center gap-2';
+            if(type==='success') el.classList.add('bg-green-600');
+            else if(type==='error') el.classList.add('bg-red-600');
+            else if(type==='warning') el.classList.add('bg-yellow-500','text-black');
+            else el.classList.add('bg-blue-600');
+            
+            let icon = 'info-circle';
+            if(type==='success') icon = 'check-circle';
+            else if(type==='error') icon = 'exclamation-circle';
+            else if(type==='warning') icon = 'exclamation-triangle';
+            
+            el.innerHTML = `<i class="fas fa-${icon}"></i> ${msg}`;
+            el.style.opacity = 0;
+            container.appendChild(el);
+            requestAnimationFrame(()=> { el.style.opacity=1; el.classList.add('toast-show'); });
+            setTimeout(()=> {
+                el.style.opacity = 0;
+                setTimeout(()=> el.remove(), 280);
+            }, duration);
+        }
+
+        function saveToStorage(key, obj){ localStorage.setItem(key, JSON.stringify(obj)); }
+        function loadFromStorage(key, fallback){ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+
+        /* ========= App state ========= */
+        let USERS = loadFromStorage('red_users', []);
+        let FEED = loadFromStorage('red_feed', []);
+        let CURRENT = loadFromStorage('red_current', null);
+        let NEXT_POST_ID = Date.now();
+        let CHATS = loadFromStorage('red_chats', {});
+        let DONATIONS = loadFromStorage('red_donations', {});
+        let BUSINESSES = loadFromStorage('red_businesses', []);
+        let LOTS = loadFromStorage('red_lots', []);
+        let REQUESTS = loadFromStorage('red_requests', []);
+        let MAP = null;
+        let USER_LOCATION = null;
+        let POST_IMAGES = [];
+        let REPLYING_TO = null;
+        let SELECTED_CHAT_ID = null;
+        let SELECTED_CHAT_USER = null;
+
+        // Criar dados de exemplo
+        function createSampleData() {
+            if (FEED.length === 0) {
+                FEED = [
+                    {
+                        id:'p1', 
+                        authorName:'Maria Silva', 
+                        authorUser:'mariasilva', 
+                        authorPic:'', 
+                        text:'Precisamos de voluntários para ajudar na distribuição de alimentos neste sábado!', 
+                        likes:[], 
+                        comments:[], 
+                        created:new Date().toISOString(), 
+                        verified: true
+                    },
+                    {
+                        id:'p2', 
+                        authorName:'João Santos', 
+                        authorUser:'joaosantos', 
+                        authorPic:'', 
+                        text:'Alguém tem roupas de inverno para doar? Estamos ajudando famílias carentes.', 
+                        likes:[], 
+                        comments:[], 
+                        created:new Date().toISOString(), 
+                        verified: false
+                    }
+                ];
+                saveToStorage('red_feed', FEED);
+            }
+            
+            if (BUSINESSES.length === 0) {
+                BUSINESSES = [
+                    {
+                        id: 'b1',
+                        name: 'Supermercado Bom Preço',
+                        type: 'supermarket',
+                        address: 'Rua das Flores, 123',
+                        lat: -23.5505,
+                        lng: -46.6333,
+                        ownerId: 'biz1'
+                    },
+                    {
+                        id: 'b2',
+                        name: 'Padaria Pão Quente',
+                        type: 'bakery',
+                        address: 'Av. Principal, 456',
+                        lat: -23.5515,
+                        lng: -46.6343,
+                        ownerId: 'biz2'
+                    }
+                ];
+                saveToStorage('red_businesses', BUSINESSES);
+            }
+            
+            if (LOTS.length === 0) {
+                const today = new Date();
+                const nextWeek = new Date(today);
+                nextWeek.setDate(today.getDate() + 7);
+                
+                LOTS = [
+                    {
+                        id: 'l1',
+                        businessId: 'b1',
+                        foodType: 'arroz',
+                        quantity: 50,
+                        available: 30,
+                        expiry: nextWeek.toISOString().split('T')[0],
+                        status: 'available'
+                    }
+                ];
+                saveToStorage('red_lots', LOTS);
+            }
+        }
+
+        /* ========= Navigation / App bootstrap ========= */
+        function openLogin(){
+            document.getElementById('screen-auth').scrollIntoView({behavior: 'smooth'});
+            document.getElementById('loginEmail').focus();
+        }
+
+        function showRegister(){
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('register-view').classList.remove('hidden');
+            document.getElementById('forgot-view').classList.add('hidden');
+            document.getElementById('regNome').focus();
+        }
+
+        function showLogin(){
+            document.getElementById('register-view').classList.add('hidden');
+            document.getElementById('forgot-view').classList.add('hidden');
+            document.getElementById('login-view').classList.remove('hidden');
+            document.getElementById('loginEmail').focus();
+        }
+
+        function showForgotPassword(){
+            // Implementação simplificada
+            toast('Funcionalidade em desenvolvimento', 'info');
+        }
+
+        function navTo(name){
+            document.getElementById('screen-auth').classList.add('hidden');
+            document.getElementById('screen-app').classList.remove('hidden');
+
+            ['feed-screen','map-screen','chats-screen','donations-screen','requests-screen','account-screen'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+
+            if(name === 'feed') {
+                document.getElementById('composer').classList.remove('hidden');
+                document.getElementById('feed-screen').classList.remove('hidden');
+                loadFeed();
+            }
+            if(name === 'map') {
+                document.getElementById('composer').classList.add('hidden');
+                document.getElementById('map-screen').classList.remove('hidden');
+                initMap();
+            }
+            if(name === 'chats') {
+                document.getElementById('composer').classList.add('hidden');
+                document.getElementById('chats-screen').classList.remove('hidden');
+                renderChatList();
+                checkUnreadMessages();
+            }
+            if(name === 'donations') {
+                document.getElementById('composer').classList.add('hidden');
+                document.getElementById('donations-screen').classList.remove('hidden');
+                loadDonations();
+            }
+            if(name === 'requests') {
+                document.getElementById('composer').classList.add('hidden');
+                document.getElementById('requests-screen').classList.remove('hidden');
+                loadRequests();
+            }
+            if(name === 'account') {
+                document.getElementById('composer').classList.add('hidden');
+                document.getElementById('account-screen').classList.remove('hidden');
+                loadAccount();
+            }
+
+            if(CURRENT){
+                document.getElementById('headerUser').classList.remove('hidden');
+                document.getElementById('btnLoginHeader').classList.add('hidden');
+                document.getElementById('headerAvatar').src = CURRENT.profilePic || (`https://ui-avatars.com/api/?name=${encodeURIComponent(CURRENT.name)}&background=4f8bc9&color=fff`);
+                document.getElementById('headerName').innerText = CURRENT.name;
+                
+                // Mostrar/ocultar aba de comércio
+                if (CURRENT.isBusiness) {
+                    document.getElementById('businessTabButton').classList.remove('hidden');
+                } else {
+                    document.getElementById('businessTabButton').classList.add('hidden');
+                }
+            }
+        }
+
+        /* ========= Auth: register / login / logout ========= */
+        function doRegister(){
+            const name = document.getElementById('regNome').value.trim();
+            const usuario = document.getElementById('regUsuario').value.trim();
+            const email = document.getElementById('regEmail').value.trim().toLowerCase();
+            const pass = document.getElementById('regPass').value;
+            const pass2 = document.getElementById('regPass2').value;
+            const isBusiness = document.getElementById('isBusiness').checked;
+            
+            if(!name || !usuario || !email || !pass || !pass2){ 
+                toast('Preencha todos os campos','error'); 
+                return; 
+            }
+            
+            if(pass !== pass2){ 
+                toast('Senhas não conferem','error'); 
+                return; 
+            }
+            
+            if(USERS.some(u => u.user === usuario)){ 
+                toast('Este @username já existe','error'); 
+                return; 
+            }
+            
+            if(USERS.some(u => u.email === email)){ 
+                toast('Email já cadastrado','error'); 
+                return; 
+            }
+
+            const registerButton = document.getElementById('registerButton');
+            registerButton.classList.add('btn-loading');
+
+            setTimeout(() => {
+                const newUser = {
+                    id: 'u'+Date.now(),
+                    name, 
+                    user: usuario, 
+                    email, 
+                    pass,
+                    bio:'', 
+                    profilePic:'',
+                    isBusiness: isBusiness,
+                    points: 0
+                };
+                
+                USERS.push(newUser);
+                saveToStorage('red_users', USERS);
+                
+                registerButton.classList.remove('btn-loading');
+                toast('Conta criada com sucesso! Faça login','success');
+                showLogin();
+                
+                document.getElementById('loginEmail').value = email;
+                document.getElementById('loginPass').value = pass;
+            }, 1000);
+        }
+
+        function doLogin(){
+            const loginValue = document.getElementById('loginEmail').value.trim().toLowerCase();
+            const pass = document.getElementById('loginPass').value;
+            
+            if(!loginValue || !pass){ 
+                toast('Preencha todos os campos','error'); 
+                return; 
+            }
+
+            const loginButton = document.getElementById('loginButton');
+            loginButton.classList.add('btn-loading');
+
+            setTimeout(() => {
+                const found = USERS.find(u => (u.email === loginValue || u.user === loginValue) && u.pass === pass);
+                
+                if(!found){ 
+                    loginButton.classList.remove('btn-loading');
+                    toast('Credenciais inválidas','error'); 
+                    return; 
+                }
+                
+                CURRENT = found;
+                saveToStorage('red_current', CURRENT);
+                
+                loginButton.classList.remove('btn-loading');
+                toast(`Bem-vindo(a), ${CURRENT.name}`,'success');
+                
+                // update composer avatar
+                document.getElementById('composerAvatar').src = CURRENT.profilePic || (`https://ui-avatars.com/api/?name=${encodeURIComponent(CURRENT.name)}&background=4f8bc9&color=fff`);
+                
+                document.getElementById('headerUser').classList.remove('hidden');
+                document.getElementById('headerAvatar').src = CURRENT.profilePic || (`https://ui-avatars.com/api/?name=${encodeURIComponent(CURRENT.name)}&background=4f8bc9&color=fff`);
+                document.getElementById('headerName').innerText = CURRENT.name;
+                document.getElementById('btnLoginHeader').classList.add('hidden');
+                
+                navTo('feed');
+            }, 1000);
+        }
+
+        function doLogout(){
+            CURRENT = null;
+            localStorage.removeItem('red_current');
+            toast('Você saiu da conta','info');
+            document.getElementById('screen-auth').classList.remove('hidden');
+            document.getElementById('screen-app').classList.add('hidden');
+            document.getElementById('headerUser').classList.add('hidden');
+            document.getElementById('btnLoginHeader').classList.remove('hidden');
+        }
+
+        /* ========= Posts / Feed ========= */
+        function createPost(){
+            if(!CURRENT){ toast('Faça login para publicar','warning'); return; }
+            const text = document.getElementById('composerText').value.trim();
+            if(!text && POST_IMAGES.length === 0){ 
+                toast('Escreva algo ou adicione imagens para publicar','warning'); 
+                return; 
+            }
+            
+            const post = {
+                id: 'p'+(NEXT_POST_ID++),
+                authorName: CURRENT.name,
+                authorUser: CURRENT.user,
+                authorPic: CURRENT.profilePic || '',
+                text, 
+                images: [...POST_IMAGES],
+                likes:[], 
+                comments:[], 
+                created: new Date().toISOString(),
+                verified: CURRENT.verified || false
+            };
+            
+            FEED.unshift(post);
+            saveToStorage('red_feed', FEED);
+            document.getElementById('composerText').value = '';
+            
+            // Limpar imagens
+            POST_IMAGES = [];
+            document.getElementById('imagePreview').innerHTML = '';
+            
+            toast('Publicação criada','success');
+            loadFeed();
+        }
+
+        function loadFeed(){
+            const container = document.getElementById('feedList');
+            container.innerHTML = '';
+            if(FEED.length === 0){
+                container.innerHTML = `<div class="bg-white p-6 rounded-2xl shadow text-gray-600 text-center"><i class="fas fa-inbox text-3xl mb-2 text-gray-400"></i><p>Sem publicações ainda.</p></div>`;
+                return;
+            }
+            
+            FEED.forEach(post => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-2xl p-4 shadow-lg border border-gray-100';
+                
+                // Definir o badge correto
+                let badge = '';
+                if (post.authorUser === 'galvao') {
+                    badge = '<span class="gold-badge"><i class="fas fa-crown"></i></span>';
+                } else if (post.verified) {
+                    badge = '<span class="verified-badge"><i class="fas fa-check"></i></span>';
+                }
+                
+                // Verificar se o usuário atual já curtiu
+                const isLiked = post.likes.includes(CURRENT.user);
+                
+                // Gerar HTML para imagens se existirem
+                let imagesHtml = '';
+                if (post.images && post.images.length > 0) {
+                    const imageCount = post.images.length;
+                    let gridClass = 'post-images';
+                    
+                    if (imageCount === 1) {
+                        gridClass += ' single';
+                    } else if (imageCount === 3) {
+                        gridClass += ' three';
+                    }
+                    
+                    imagesHtml = `<div class="${gridClass}">`;
+                    post.images.forEach((img, idx) => {
+                        imagesHtml += `<img src="${img}" alt="Imagem ${idx+1}" onclick="openImageModal('${img}')">`;
+                    });
+                    imagesHtml += '</div>';
+                }
+                
+                card.innerHTML = `
+                    <div class="flex gap-3">
+                        <img src="${post.authorPic || ('https://ui-avatars.com/api/?name='+encodeURIComponent(post.authorName)+'&background=4f8bc9&color=fff')}" class="w-12 h-12 rounded-full object-cover border-2 border-white shadow" />
+                        <div class="flex-1">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <div class="font-semibold flex items-center">${escapeHtml(post.authorName)} ${badge} <span class="text-sm text-gray-500">@${escapeHtml(post.authorUser)}</span></div>
+                                    <div class="text-xs text-gray-400"><i class="far fa-clock"></i> ${new Date(post.created).toLocaleString()}</div>
+                                </div>
+                                <div class="text-xs text-gray-400">Pratofirme</div>
+                            </div>
+                            ${post.text ? `<p class="mt-3 text-gray-800">${escapeHtml(post.text)}</p>` : ''}
+                            ${imagesHtml}
+                            
+                            <div class="mt-3 flex items-center gap-4 text-sm text-gray-600">
+                                <button class="like-btn flex items-center gap-1 ${isLiked ? 'liked' : ''}" data-id="${post.id}">
+                                    <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i> 
+                                    Curtir (<span class="like-count">${post.likes.length}</span>)
+                                </button>
+                                <button class="toggle-comments flex items-center gap-1" data-id="${post.id}"><i class="far fa-comment"></i> Comentar (${post.comments.length})</button>
+                                <button onclick="startConversation('${post.authorUser}')" class="text-green-600 flex items-center gap-1"><i class="far fa-envelope"></i> Conversar</button>
+                            </div>
+
+                            <div class="mt-3 comment-area hidden" id="comments-${post.id}">
+                                <div class="space-y-2 comment-list">
+                                    ${(post.comments||[]).map(c=>`<div class="text-sm border-b py-1"><strong>@${escapeHtml(c.user)}</strong>: ${escapeHtml(c.text)}</div>`).join('')}
+                                </div>
+
+                                <div class="mt-2 flex gap-2">
+                                    <input class="flex-1 border border-gray-200 p-2 rounded-lg comment-input" placeholder="Escreva um comentário..." data-id="${post.id}"/>
+                                    <button class="bg-[#4f8bc9] text-white px-3 py-2 rounded-lg comment-send" data-id="${post.id}"><i class="fas fa-paper-plane"></i></button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            // attach handlers
+            document.querySelectorAll('.like-btn').forEach(btn=>{
+                btn.onclick = () => {
+                    const id = btn.dataset.id;
+                    likePost(id);
+                };
+            });
+            document.querySelectorAll('.toggle-comments').forEach(btn=>{
+                btn.onclick = () => {
+                    const id = btn.dataset.id;
+                    const area = document.getElementById('comments-'+id);
+                    if(area) area.classList.toggle('hidden');
+                };
+            });
+            document.querySelectorAll('.comment-send').forEach(btn=>{
+                btn.onclick = ()=>{
+                    const id = btn.dataset.id;
+                    const input = document.querySelector(`.comment-input[data-id="${id}"]`);
+                    if(!input) return;
+                    const txt = input.value.trim();
+                    if(!txt){ toast('Digite um comentário','warning'); return; }
+                    addComment(id, txt);
+                    input.value = '';
+                };
+            });
+        }
+
+        // Função para abrir imagem em modal
+        function openImageModal(src) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            modal.style.display = 'flex';
+            modalImg.src = src;
+        }
+
+        // Fechar modal ao clicar no X
+        document.querySelector('.close-modal').onclick = function() {
+            document.getElementById('imageModal').style.display = 'none';
+        }
+
+        // Fechar modal ao clicar fora da imagem
+        document.getElementById('imageModal').onclick = function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        }
+
+        // Manipulação de imagens para postagem
+        document.getElementById('postImages').addEventListener('change', function(e) {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            // Limitar a 5 imagens
+            const remainingSlots = 5 - POST_IMAGES.length;
+            if (remainingSlots <= 0) {
+                toast('Máximo de 5 imagens atingido', 'warning');
+                return;
+            }
+            
+            const filesToProcess = Math.min(files.length, remainingSlots);
+            const previewContainer = document.getElementById('imagePreview');
+            
+            for (let i = 0; i < filesToProcess; i++) {
+                const file = files[i];
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    const imageUrl = e.target.result;
+                    POST_IMAGES.push(imageUrl);
+                    
+                    // Adicionar preview
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'image-preview-item';
+                    previewItem.innerHTML = `
+                        <img src="${imageUrl}" alt="Preview">
+                        <button onclick="removeImage(${POST_IMAGES.length - 1})">&times;</button>
+                    `;
+                    previewContainer.appendChild(previewItem);
+                };
+                
+                reader.readAsDataURL(file);
+            }
+            
+            // Resetar o input para permitir selecionar as mesmas imagens novamente
+            this.value = '';
+        });
+
+        // Função para remover imagem do preview
+        function removeImage(index) {
+            POST_IMAGES.splice(index, 1);
+            updateImagePreview();
+        }
+
+        // Atualizar preview de imagens
+        function updateImagePreview() {
+            const previewContainer = document.getElementById('imagePreview');
+            previewContainer.innerHTML = '';
+            
+            POST_IMAGES.forEach((imageUrl, index) => {
+                const previewItem = document.createElement('div');
+                previewItem.className = 'image-preview-item';
+                previewItem.innerHTML = `
+                    <img src="${imageUrl}" alt="Preview">
+                    <button onclick="removeImage(${index})">&times;</button>
+                `;
+                previewContainer.appendChild(previewItem);
+            });
+        }
+
+        function likePost(postId){
+            if(!CURRENT){ toast('Faça login para curtir','warning'); return; }
+            const post = FEED.find(p => p.id === postId);
+            if(!post) return;
+            
+            // Verificar se o usuário já curtiu
+            const userIndex = post.likes.indexOf(CURRENT.user);
+            
+            if(userIndex > -1){
+                // Remover like
+                post.likes.splice(userIndex, 1);
+                toast('Like removido','info');
+            } else {
+                // Adicionar like
+                post.likes.push(CURRENT.user);
+                toast('Publicação curtida','success');
+            }
+            
+            saveToStorage('red_feed', FEED);
+            loadFeed();
+        }
+
+        function addComment(postId, text){
+            if(!CURRENT){ toast('Faça login para comentar','warning'); return; }
+            const post = FEED.find(p => p.id === postId);
+            if(!post) return;
+            post.comments.push({user: CURRENT.user, text, at: new Date().toISOString()});
+            saveToStorage('red_feed', FEED);
+            loadFeed();
+            toast('Comentário adicionado','success');
+        }
+
+        /* ========= Chats ========= */
+        function startConversation(targetUser){
+            if(!CURRENT){ toast('Faça login para conversar','warning'); return; }
+            if(targetUser === CURRENT.user){ toast('Não é possível conversar consigo mesmo','warning'); return; }
+            
+            // Verificar se o usuário alvo existe
+            const targetUserObj = USERS.find(u => u.user === targetUser);
+            if(!targetUserObj){ toast('Usuário não encontrado','error'); return; }
+            
+            // Criar ID único para a conversa (ordem alfabética para garantir que seja o mesmo para ambos)
+            const chatId = [CURRENT.user, targetUser].sort().join('_');
+            
+            // Inicializar a conversa se não existir
+            if(!CHATS[chatId]) {
+                CHATS[chatId] = {
+                    participants: [CURRENT.user, targetUser],
+                    messages: [],
+                    lastMessageAt: new Date().toISOString()
+                };
+                saveToStorage('red_chats', CHATS);
+            }
+            
+            navTo('chats');
+            selectChat(chatId, targetUser);
+        }
+
+        function renderChatList(){
+            const list = document.getElementById('chatList');
+            list.innerHTML = '';
+            
+            if(!CURRENT || !CHATS) return;
+            
+            // Encontrar todas as conversas do usuário atual
+            const userChats = Object.entries(CHATS)
+                .filter(([id, chat]) => chat.participants.includes(CURRENT.user))
+                .sort((a, b) => new Date(b[1].lastMessageAt) - new Date(a[1].lastMessageAt));
+            
+            if(userChats.length === 0) {
+                list.innerHTML = '<div class="text-gray-500 text-center p-4"><i class="fas fa-comments text-2xl mb-2 text-gray-400"></i><p>Nenhuma conversa iniciada</p></div>';
+                return;
+            }
+            
+            userChats.forEach(([chatId, chat]) => {
+                // Encontrar o outro participante
+                const otherUser = chat.participants.find(u => u !== CURRENT.user);
+                const otherUserObj = USERS.find(u => u.user === otherUser);
+                const lastMessage = chat.messages[chat.messages.length - 1];
+                const unreadCount = chat.messages.filter(m => 
+                    m.sender !== CURRENT.user && !m.read).length;
+                
+                // Definir o badge correto
+                let badge = '';
+                if (otherUserObj && otherUserObj.isOwner) {
+                    badge = '<span class="gold-badge"><i class="fas fa-crown"></i></span>';
+                } else if (otherUserObj && otherUserObj.verified) {
+                    badge = '<span class="verified-badge"><i class="fas fa-check"></i></span>';
+                }
+                
+                const el = document.createElement('div');
+                el.className = `chat-item p-3 rounded-lg cursor-pointer flex items-center gap-3 ${unreadCount > 0 ? 'unread' : ''} ${SELECTED_CHAT_ID === chatId ? 'active' : ''}`;
+                el.innerHTML = `
+                    <img src="${otherUserObj?.profilePic || ('https://ui-avatars.com/api/?name='+encodeURIComponent(otherUser)+'&background=4f8bc9&color=fff')}" class="w-12 h-12 rounded-full object-cover border-2 border-white shadow"/>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-semibold truncate flex items-center">${escapeHtml(otherUserObj?.name || otherUser)} ${badge}</div>
+                        <div class="text-xs text-gray-500 truncate">${lastMessage ? escapeHtml(lastMessage.text) : 'Nenhuma mensagem'}</div>
+                    </div>
+                    <div class="flex flex-col items-end">
+                        <div class="text-xs text-gray-400 whitespace-nowrap">
+                            ${lastMessage ? formatTimeAgo(lastMessage.timestamp) : ''}
+                        </div>
+                        ${unreadCount > 0 ? `<span class="bg-[#3ba97c] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center mt-1">${unreadCount}</span>` : ''}
+                    </div>
+                `;
+                el.onclick = () => selectChat(chatId, otherUser);
+                list.appendChild(el);
+            });
+        }
+
+        function filterChats(searchTerm) {
+            const list = document.getElementById('chatList');
+            const items = list.querySelectorAll('.chat-item');
+            
+            items.forEach(item => {
+                const userName = item.querySelector('.font-semibold').textContent.toLowerCase();
+                if (userName.includes(searchTerm.toLowerCase())) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        function selectChat(chatId, otherUser){
+            SELECTED_CHAT_ID = chatId;
+            SELECTED_CHAT_USER = otherUser;
+            
+            // Atualizar a lista para destacar a conversa selecionada
+            renderChatList();
+            
+            const otherUserObj = USERS.find(u => u.user === otherUser);
+            document.getElementById('chatWithUser').innerText = otherUserObj?.name || otherUser;
+            document.getElementById('chatStatus').innerHTML = `<i class="fas fa-circle text-green-500"></i> Online`;
+            
+            renderMessages(chatId);
+            
+            // Marcar mensagens como lidas e atualizar notificações
+            markMessagesAsRead(chatId);
+        }
+
+        function renderMessages(chatId){
+            const box = document.getElementById('chatWindow');
+            box.innerHTML = '';
+            
+            if(!CHATS[chatId] || CHATS[chatId].messages.length === 0) {
+                box.innerHTML = '<div class="text-gray-500 text-center p-4"><i class="fas fa-comment-slash text-3xl mb-2 text-gray-400"></i><p>Nenhuma mensagem ainda. Envie uma mensagem para iniciar a conversa.</p></div>';
+                return;
+            }
+            
+            CHATS[chatId].messages.forEach((m, index) => {
+                const isSelf = m.sender === CURRENT.user;
+                const messageTime = new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const showOptions = true; // Todos podem responder
+                
+                const div = document.createElement('div');
+                div.className = `chat-bubble ${isSelf ? 'self' : 'other'} ${REPLYING_TO === index ? 'replying' : ''}`;
+                
+                let messageContent = '';
+                if (m.replyTo !== undefined && m.replyTo !== null) {
+                    const repliedMessage = CHATS[chatId].messages[m.replyTo];
+                    if (repliedMessage) {
+                        const replySender = repliedMessage.sender === CURRENT.user ? 'Você' : repliedMessage.sender;
+                        messageContent += `<div class="chat-reply"><i class="fas fa-reply"></i> Em resposta a ${replySender}: ${escapeHtml(repliedMessage.text)}</div>`;
+                    }
+                }
+                
+                messageContent += `<div>${escapeHtml(m.text)}</div>`;
+                messageContent += `<span class="chat-time"><i class="far fa-clock"></i> ${messageTime}</span>`;
+                
+                if (showOptions) {
+                    messageContent += `
+                        <div class="message-options">
+                            <button class="text-xs text-gray-500 hover:text-gray-700 transition-all" onclick="replyToMessage(${index})" title="Responder"><i class="fas fa-reply"></i></button>
+                        </div>
+                    `;
+                }
+                
+                div.innerHTML = messageContent;
+                box.appendChild(div);
+            });
+            
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function replyToMessage(messageIndex) {
+            if (!SELECTED_CHAT_ID) return;
+            
+            const message = CHATS[SELECTED_CHAT_ID].messages[messageIndex];
+            REPLYING_TO = messageIndex;
+            
+            // Mostrar indicador de resposta
+            const replyIndicator = document.getElementById('replyIndicator');
+            const replyText = document.getElementById('replyText');
+            
+            replyText.innerText = message.text.length > 50 ? message.text.substring(0, 50) + '...' : message.text;
+            replyIndicator.classList.remove('hidden');
+            
+            // Destacar a mensagem sendo respondida
+            renderMessages(SELECTED_CHAT_ID);
+            
+            // Focar no campo de mensagem
+            document.getElementById('chatMsg').focus();
+        }
+
+        function cancelReply() {
+            REPLYING_TO = null;
+            document.getElementById('replyIndicator').classList.add('hidden');
+            renderMessages(SELECTED_CHAT_ID);
+        }
+
+        function sendChat(){
+            const txt = document.getElementById('chatMsg').value.trim();
+            if(!SELECTED_CHAT_ID || !SELECTED_CHAT_USER){ toast('Selecione uma conversa','warning'); return; }
+            if(!txt) return;
+            
+            // Criar mensagem
+            const newMessage = {
+                sender: CURRENT.user,
+                text: txt,
+                timestamp: new Date().toISOString(),
+                read: false,
+                replyTo: REPLYING_TO
+            };
+            
+            // Adicionar à conversa
+            CHATS[SELECTED_CHAT_ID].messages.push(newMessage);
+            CHATS[SELECTED_CHAT_ID].lastMessageAt = new Date().toISOString();
+            
+            // Salvar no armazenamento
+            saveToStorage('red_chats', CHATS);
+            
+            // Limpar e atualizar a interface
+            document.getElementById('chatMsg').value = '';
+            cancelReply();
+            renderMessages(SELECTED_CHAT_ID);
+            
+            // Notificar o usuário
+            toast('Mensagem enviada', 'success');
+        }
+
+        function markMessagesAsRead(chatId){
+            if(!CHATS[chatId]) return;
+            
+            let updated = false;
+            CHATS[chatId].messages.forEach(m => {
+                if(m.sender !== CURRENT.user && !m.read) {
+                    m.read = true;
+                    updated = true;
+                }
+            });
+            
+            if(updated) {
+                saveToStorage('red_chats', CHATS);
+                checkUnreadMessages();
+            }
+        }
+
+        function checkUnreadMessages(){
+            if(!CURRENT || !CHATS) return;
+            
+            let totalUnread = 0;
+            Object.values(CHATS).forEach(chat => {
+                if(chat.participants.includes(CURRENT.user)) {
+                    totalUnread += chat.messages.filter(m => 
+                        m.sender !== CURRENT.user && !m.read).length;
+                }
+            });
+            
+            // Atualizar indicadores de notificação
+            const chatNotification = document.getElementById('chat-notification');
+            const mobileChatNotification = document.getElementById('mobile-chat-notification');
+            
+            if(totalUnread > 0) {
+                chatNotification.classList.remove('hidden');
+                mobileChatNotification.classList.remove('hidden');
+                chatNotification.innerText = totalUnread > 9 ? '9+' : totalUnread;
+            } else {
+                chatNotification.classList.add('hidden');
+                mobileChatNotification.classList.add('hidden');
+            }
+        }
+
+        function formatTimeAgo(timestamp) {
+            const now = new Date();
+            const messageTime = new Date(timestamp);
+            const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
+            
+            if (diffInMinutes < 1) return 'Agora';
+            if (diffInMinutes < 60) return `${diffInMinutes} min`;
+            if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)} h`;
+            return `${Math.floor(diffInMinutes / 1440)} dias`;
+        }
+
+        /* ========= Mapa ========= */
+        function initMap() {
+            if (MAP) {
+                MAP.remove();
+            }
+            
+            MAP = L.map('map').setView([-23.5505, -46.6333], 13);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(MAP);
+            
+            // Adicionar marcadores dos comércios
+            BUSINESSES.forEach(business => {
+                const iconColor = getBusinessColor(business.type);
+                const icon = L.divIcon({
+                    html: `<div style="background-color: ${iconColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`,
+                    className: 'business-marker',
+                    iconSize: [16, 16]
+                });
+                
+                const marker = L.marker([business.lat, business.lng], {icon: icon}).addTo(MAP);
+                marker.bindPopup(`
+                    <div class="font-semibold">${business.name}</div>
+                    <div class="text-sm">${getBusinessTypeName(business.type)}</div>
+                    <div class="text-xs text-gray-500">${business.address}</div>
+                `);
+            });
+            
+            // Configurar botão de localização
+            document.getElementById('getLocationBtn').onclick = getUserLocation;
+            
+            // Configurar filtro
+            document.getElementById('businessFilter').onchange = filterBusinesses;
+            
+            updateNearbyBusinesses();
+        }
+
+        function getBusinessColor(type) {
+            const colors = {
+                'supermarket': '#3b82f6',
+                'bakery': '#f59e0b',
+                'garden': '#10b981',
+                'restaurant': '#ef4444',
+                'other': '#8b5cf6'
+            };
+            return colors[type] || '#6b7280';
+        }
+
+        function getBusinessTypeName(type) {
+            const names = {
+                'supermarket': 'Supermercado',
+                'bakery': 'Padaria',
+                'garden': 'Horta',
+                'restaurant': 'Restaurante',
+                'other': 'Outro'
+            };
+            return names[type] || 'Comércio';
+        }
+
+        function getUserLocation() {
+            if (!navigator.geolocation) {
+                toast('Geolocalização não é suportada pelo seu navegador', 'error');
+                return;
+            }
+            
+            toast('Obtendo sua localização...', 'info');
+            
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    USER_LOCATION = { lat, lng };
+                    
+                    // Adicionar marcador da localização do usuário
+                    L.marker([lat, lng], {
+                        icon: L.divIcon({
+                            html: '<i class="fas fa-map-pin text-red-500 text-2xl"></i>',
+                            className: 'user-location-marker',
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 30]
+                        })
+                    }).addTo(MAP).bindPopup('Sua localização').openPopup();
+                    
+                    // Centralizar mapa na localização do usuário
+                    MAP.setView([lat, lng], 15);
+                    
+                    toast('Localização obtida com sucesso!', 'success');
+                    updateNearbyBusinesses();
+                },
+                error => {
+                    toast('Não foi possível obter sua localização', 'error');
+                    console.error(error);
+                }
+            );
+        }
+
+        function filterBusinesses() {
+            const filter = document.getElementById('businessFilter').value;
+            
+            // Em uma implementação real, isso filtraria os marcadores no mapa
+            // Por simplicidade, vamos apenas atualizar a lista de comércios próximos
+            updateNearbyBusinesses(filter);
+        }
+
+        function updateNearbyBusinesses(filter = 'all') {
+            const container = document.getElementById('nearbyBusinesses');
+            
+            let businessesToShow = BUSINESSES;
+            if (filter !== 'all') {
+                businessesToShow = BUSINESSES.filter(b => b.type === filter);
+            }
+            
+            if (businessesToShow.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-gray-500">
+                        <i class="fas fa-store text-xl mb-2"></i>
+                        <p>Nenhum comércio encontrado</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            businessesToShow.forEach(business => {
+                const lotCount = LOTS.filter(l => l.businessId === business.id && l.status === 'available').length;
+                
+                html += `
+                    <div class="bg-white p-3 rounded-lg border border-gray-200">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="font-semibold flex items-center">
+                                    <i class="fas fa-${getBusinessIcon(business.type)} ${getBusinessIconColor(business.type)} mr-2"></i>
+                                    ${business.name}
+                                </div>
+                                <div class="text-xs text-gray-500">${business.address}</div>
+                            </div>
+                            ${lotCount > 0 ? `<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">${lotCount} lote(s)</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function getBusinessIcon(type) {
+            const icons = {
+                'supermarket': 'shopping-cart',
+                'bakery': 'bread-slice',
+                'garden': 'leaf',
+                'restaurant': 'utensils',
+                'other': 'store'
+            };
+            return icons[type] || 'store';
+        }
+
+        function getBusinessIconColor(type) {
+            const colors = {
+                'supermarket': 'text-blue-500',
+                'bakery': 'text-yellow-500',
+                'garden': 'text-green-500',
+                'restaurant': 'text-red-500',
+                'other': 'text-purple-500'
+            };
+            return colors[type] || 'text-gray-500';
+        }
+
+        /* ========= Sistema de Doações ========= */
+        function loadDonations() {
+            if (!CURRENT) return;
+            
+            if (!DONATIONS[CURRENT.id]) {
+                DONATIONS[CURRENT.id] = {
+                    points: 0,
+                    history: []
+                };
+                saveToStorage('red_donations', DONATIONS);
+            }
+            
+            updatePointsCounter();
+            updateDonationHistory();
+            
+            // Configurar data atual como padrão
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('donation-date').value = today;
+            document.getElementById('lot-expiry').value = today;
+            
+            // Configurar handlers dos formulários
+            document.getElementById('individual-donation-form').onsubmit = function(e) {
+                e.preventDefault();
+                registerIndividualDonation();
+            };
+            
+            document.getElementById('business-donation-form').onsubmit = function(e) {
+                e.preventDefault();
+                registerBusinessLot();
+            };
+            
+            // Configurar tabs
+            initDonationTabs();
+            
+            // Carregar lotes do comércio se for um comércio
+            if (CURRENT.isBusiness) {
+                loadBusinessLots();
+            }
+        }
+
+        function initDonationTabs() {
+            const tabButtons = document.querySelectorAll('#donations-screen .tab-button');
+            const tabPanels = document.querySelectorAll('#donations-screen .tab-panel');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabName = button.getAttribute('data-tab');
+                    
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    
+                    tabPanels.forEach(panel => panel.classList.add('hidden'));
+                    document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+                });
+            });
+        }
+
+        function updatePointsCounter() {
+            if (!CURRENT || !DONATIONS[CURRENT.id]) return;
+            
+            const pointsCounter = document.getElementById('points-counter');
+            pointsCounter.textContent = DONATIONS[CURRENT.id].points;
+        }
+
+        function updateDonationHistory() {
+            const historyList = document.getElementById('history-list');
+            
+            if (!CURRENT || !DONATIONS[CURRENT.id] || DONATIONS[CURRENT.id].history.length === 0) {
+                historyList.innerHTML = `
+                    <div class="text-center py-10 text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-3"></i>
+                        <p>Nenhuma doação registrada ainda.</p>
+                    </div>`;
+                return;
+            }
+            
+            let html = '';
+            DONATIONS[CURRENT.id].history.forEach(donation => {
+                const formattedDate = new Date(donation.date).toLocaleDateString('pt-BR');
+                
+                html += `
+                    <div class="bg-slate-50 p-3 rounded-lg border border-gray-200">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="font-semibold">${getFoodTypeName(donation.foodType)}</div>
+                                <div class="text-sm text-gray-500">${formattedDate}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-semibold">${donation.quantity} kg</div>
+                                <div class="text-green-600 font-semibold">+${donation.points} pontos</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            historyList.innerHTML = html;
+        }
+
+        function registerIndividualDonation() {
+            if (!CURRENT) {
+                toast('Faça login para registrar uma doação', 'warning');
+                return;
+            }
+            
+            const foodType = document.getElementById('food-type').value;
+            const quantity = parseFloat(document.getElementById('quantity').value);
+            const date = document.getElementById('donation-date').value;
+            
+            if (!foodType || !quantity || !date) {
+                toast('Preencha todos os campos', 'error');
+                return;
+            }
+            
+            const pointsEarned = Math.floor(quantity * 100);
+            
+            DONATIONS[CURRENT.id].points += pointsEarned;
+            
+            const donation = {
+                foodType: foodType,
+                quantity: quantity,
+                date: date,
+                points: pointsEarned
+            };
+            
+            DONATIONS[CURRENT.id].history.unshift(donation);
+            saveToStorage('red_donations', DONATIONS);
+            
+            CURRENT.points = DONATIONS[CURRENT.id].points;
+            saveCurrentUser();
+            
+            updatePointsCounter();
+            updateDonationHistory();
+            
+            toast(`Doação registrada com sucesso! Você ganhou ${pointsEarned} pontos.`, 'success');
+            
+            document.getElementById('individual-donation-form').reset();
+            document.getElementById('donation-date').value = new Date().toISOString().split('T')[0];
+            
+            const pointsCounter = document.getElementById('points-counter');
+            pointsCounter.classList.add('points-animation');
+            setTimeout(() => {
+                pointsCounter.classList.remove('points-animation');
+            }, 1000);
+        }
+
+        function registerBusinessLot() {
+            if (!CURRENT || !CURRENT.isBusiness) {
+                toast('Apenas comércios podem cadastrar lotes', 'warning');
+                return;
+            }
+            
+            const foodType = document.getElementById('lot-food-type').value;
+            const quantity = parseInt(document.getElementById('lot-quantity').value);
+            const expiry = document.getElementById('lot-expiry').value;
+            
+            if (!foodType || !quantity || !expiry) {
+                toast('Preencha todos os campos', 'error');
+                return;
+            }
+            
+            // Encontrar o comércio do usuário atual
+            const userBusiness = BUSINESSES.find(b => b.ownerId === CURRENT.id);
+            if (!userBusiness) {
+                toast('Você precisa cadastrar informações do seu comércio primeiro', 'warning');
+                navTo('account');
+                return;
+            }
+            
+            const newLot = {
+                id: 'l' + Date.now(),
+                businessId: userBusiness.id,
+                foodType: foodType,
+                quantity: quantity,
+                available: quantity,
+                expiry: expiry,
+                status: 'available'
+            };
+            
+            LOTS.push(newLot);
+            saveToStorage('red_lots', LOTS);
+            
+            toast('Lote cadastrado com sucesso!', 'success');
+            
+            document.getElementById('business-donation-form').reset();
+            document.getElementById('lot-expiry').value = new Date().toISOString().split('T')[0];
+            
+            loadBusinessLots();
+        }
+
+        function loadBusinessLots() {
+            if (!CURRENT || !CURRENT.isBusiness) return;
+            
+            const userBusiness = BUSINESSES.find(b => b.ownerId === CURRENT.id);
+            if (!userBusiness) return;
+            
+            const userLots = LOTS.filter(l => l.businessId === userBusiness.id);
+            
+            const container = document.getElementById('business-lots');
+            const section = document.getElementById('business-lots-section');
+            
+            if (userLots.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-gray-500">
+                        <i class="fas fa-box text-xl mb-2"></i>
+                        <p>Nenhum lote cadastrado</p>
+                    </div>
+                `;
+                section.classList.remove('hidden');
+                return;
+            }
+            
+            let html = '';
+            userLots.forEach(lot => {
+                const today = new Date();
+                const expiryDate = new Date(lot.expiry);
+                const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+                const isExpiring = daysUntilExpiry <= 7;
+                
+                html += `
+                    <div class="p-3 rounded-lg border ${isExpiring ? 'lot-expiring' : 'lot-available'}">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <div class="font-semibold">${getFoodTypeName(lot.foodType)}</div>
+                                <div class="text-sm text-gray-500">Validade: ${new Date(lot.expiry).toLocaleDateString('pt-BR')}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-semibold">${lot.quantity} kg</div>
+                                <div class="text-sm text-gray-500">Disponível: ${lot.available} kg</div>
+                            </div>
+                        </div>
+                        
+                        ${isExpiring ? `
+                            <div class="text-red-600 text-sm mb-2">
+                                <i class="fas fa-exclamation-triangle"></i> Vence em ${daysUntilExpiry} dia(s)
+                            </div>
+                        ` : ''}
+                        
+                        <div class="flex gap-2">
+                            <input type="number" id="available-${lot.id}" min="0" max="${lot.available}" value="${lot.available}" class="flex-1 border border-gray-200 p-2 rounded-lg text-sm">
+                            <button onclick="donateLot('${lot.id}')" class="bg-[#e74c3c] text-white px-3 py-2 rounded-lg text-sm hover:opacity-90 transition-all">
+                                <i class="fas fa-gift"></i> Doar
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+            section.classList.remove('hidden');
+        }
+
+        function donateLot(lotId) {
+            const lot = LOTS.find(l => l.id === lotId);
+            if (!lot) return;
+            
+            const availableInput = document.getElementById(`available-${lotId}`);
+            const availableToDonate = parseInt(availableInput.value);
+            
+            if (availableToDonate < 0 || availableToDonate > lot.available) {
+                toast('Quantidade inválida', 'error');
+                return;
+            }
+            
+            if (availableToDonate === 0) {
+                toast('Nenhum item selecionado para doação', 'warning');
+                return;
+            }
+            
+            // Atualizar o lote
+            lot.available -= availableToDonate;
+            if (lot.available === 0) {
+                lot.status = 'donated';
+            }
+            
+            saveToStorage('red_lots', LOTS);
+            
+            // Registrar doação
+            if (!DONATIONS[CURRENT.id]) {
+                DONATIONS[CURRENT.id] = {
+                    points: 0,
+                    history: []
+                };
+            }
+            
+            const pointsEarned = Math.floor(availableToDonate * 100);
+            DONATIONS[CURRENT.id].points += pointsEarned;
+            
+            const donation = {
+                foodType: lot.foodType,
+                quantity: availableToDonate,
+                date: new Date().toISOString().split('T')[0],
+                points: pointsEarned,
+                type: 'business'
+            };
+            
+            DONATIONS[CURRENT.id].history.unshift(donation);
+            saveToStorage('red_donations', DONATIONS);
+            
+            CURRENT.points = DONATIONS[CURRENT.id].points;
+            saveCurrentUser();
+            
+            updatePointsCounter();
+            updateDonationHistory();
+            loadBusinessLots();
+            
+            toast(`${availableToDonate}kg doados com sucesso! Você ganhou ${pointsEarned} pontos.`, 'success');
+        }
+
+        /* ========= Sistema de Solicitações ========= */
+        function loadRequests() {
+            if (!CURRENT) return;
+            
+            document.getElementById('request-form').onsubmit = function(e) {
+                e.preventDefault();
+                searchAvailableFood();
+            };
+            
+            loadOpenRequests();
+        }
+
+        function searchAvailableFood() {
+            const householdSize = parseInt(document.getElementById('household-size').value);
+            const monthlyIncome = document.getElementById('monthly-income').value;
+            const requestedFood = document.getElementById('requested-food').value;
+            
+            if (!householdSize || !monthlyIncome || !requestedFood) {
+                toast('Preencha todos os campos', 'error');
+                return;
+            }
+            
+            // Buscar lotes disponíveis com o alimento solicitado
+            const availableLots = LOTS.filter(lot => 
+                lot.status === 'available' && 
+                lot.foodType === requestedFood && 
+                lot.available > 0
+            );
+            
+            const container = document.getElementById('available-donations');
+            
+            if (availableLots.length === 0) {
+                // Nenhum lote disponível, criar solicitação aberta
+                createOpenRequest(householdSize, monthlyIncome, requestedFood);
+                
+                container.innerHTML = `
+                    <div class="text-center py-10 text-gray-500">
+                        <i class="fas fa-search text-xl mb-2"></i>
+                        <p class="font-semibold">Sua solicitação está aberta</p>
+                        <p class="text-sm">Assim que disponível o produto você será avisado(a)</p>
+                    </div>
+                `;
+                
+                return;
+            }
+            
+            let html = '<h4 class="font-semibold mb-3">Lotes Disponíveis:</h4>';
+            
+            availableLots.forEach(lot => {
+                const business = BUSINESSES.find(b => b.id === lot.businessId);
+                if (!business) return;
+                
+                const today = new Date();
+                const expiryDate = new Date(lot.expiry);
+                const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+                
+                html += `
+                    <div class="bg-white p-3 rounded-lg border border-gray-200">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <div class="font-semibold">${getFoodTypeName(lot.foodType)}</div>
+                                <div class="text-sm text-gray-500">${business.name}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-semibold">${lot.available} kg</div>
+                                <div class="text-sm text-gray-500">${business.address}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-sm text-gray-600 mb-2">
+                            <i class="fas fa-calendar-alt"></i> Vence em ${daysUntilExpiry} dia(s)
+                        </div>
+                        
+                        <button onclick="requestFood('${lot.id}')" class="w-full bg-[#3ba97c] text-white py-2 rounded-lg hover:opacity-90 transition-all text-sm">
+                            <i class="fas fa-hand-holding-heart"></i> Solicitar este lote
+                        </button>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function createOpenRequest(householdSize, monthlyIncome, requestedFood) {
+            const newRequest = {
+                id: 'r' + Date.now(),
+                userId: CURRENT.id,
+                householdSize: householdSize,
+                monthlyIncome: monthlyIncome,
+                requestedFood: requestedFood,
+                status: 'open',
+                createdAt: new Date().toISOString()
+            };
+            
+            REQUESTS.push(newRequest);
+            saveToStorage('red_requests', REQUESTS);
+            
+            loadOpenRequests();
+        }
+
+        function requestFood(lotId) {
+            if (!CURRENT) {
+                toast('Faça login para solicitar alimentos', 'warning');
+                return;
+            }
+            
+            const lot = LOTS.find(l => l.id === lotId);
+            if (!lot) return;
+            
+            // Em uma implementação real, aqui seria onde o usuário confirmaria a solicitação
+            // e o sistema notificaria o comércio
+            
+            toast('Solicitação enviada com sucesso! Entre em contato com o comércio para combinar a retirada.', 'success');
+            
+            // Atualizar a interface
+            document.getElementById('available-donations').innerHTML = `
+                <div class="text-center py-10 text-gray-500">
+                    <i class="fas fa-check-circle text-green-500 text-xl mb-2"></i>
+                    <p class="font-semibold">Solicitação enviada!</p>
+                    <p class="text-sm">Entre em contato com o comércio para combinar a retirada</p>
+                </div>
+            `;
+        }
+
+        function loadOpenRequests() {
+            if (!CURRENT) return;
+            
+            const userRequests = REQUESTS.filter(r => r.userId === CURRENT.id && r.status === 'open');
+            const container = document.getElementById('open-requests');
+            
+            if (userRequests.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-gray-500">
+                        <i class="fas fa-clipboard-list text-xl mb-2"></i>
+                        <p>Nenhuma solicitação aberta no momento</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            userRequests.forEach(request => {
+                const createdDate = new Date(request.createdAt).toLocaleDateString('pt-BR');
+                
+                html += `
+                    <div class="bg-white p-3 rounded-lg border border-gray-200">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="font-semibold">${getFoodTypeName(request.requestedFood)}</div>
+                                <div class="text-sm text-gray-500">Solicitado em ${createdDate}</div>
+                            </div>
+                            <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">Aguardando</span>
+                        </div>
+                        <div class="text-sm text-gray-600 mt-2">
+                            <i class="fas fa-users"></i> ${request.householdSize} pessoas | 
+                            <i class="fas fa-money-bill-wave"></i> ${request.monthlyIncome}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        /* ========= Account/profile ========= */
+        function loadAccount(){
+            if(!CURRENT) return;
+            
+            document.getElementById('profilePreview').src = CURRENT.profilePic || (`https://ui-avatars.com/api/?name=${encodeURIComponent(CURRENT.name)}&background=4f8bc9&color=fff`);
+            document.getElementById('accountName').value = CURRENT.name || '';
+            document.getElementById('accountUser').value = CURRENT.user || '';
+            document.getElementById('accountBio').value = CURRENT.bio || '';
+            
+            // Mostrar/ocultar informações do comércio
+            const businessInfo = document.getElementById('business-info');
+            if (CURRENT.isBusiness) {
+                businessInfo.classList.remove('hidden');
+                document.getElementById('businessName').value = CURRENT.businessName || '';
+                document.getElementById('businessType').value = CURRENT.businessType || 'supermarket';
+                document.getElementById('businessAddress').value = CURRENT.businessAddress || '';
+            } else {
+                businessInfo.classList.add('hidden');
+            }
+
+            document.getElementById('profilePicInput').onchange = function(){
+                const f = this.files[0];
+                if(!f) return;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    CURRENT.profilePic = e.target.result;
+                    saveCurrentUser();
+                    document.getElementById('profilePreview').src = e.target.result;
+                    document.getElementById('headerAvatar').src = e.target.result;
+                    toast('Foto de perfil atualizada','success');
+                };
+                reader.readAsDataURL(f);
+            };
+        }
+
+        function saveAccount(){
+            const name = document.getElementById('accountName').value.trim();
+            const user = document.getElementById('accountUser').value.trim();
+            const bio = document.getElementById('accountBio').value.trim();
+            
+            if(!name || !user){ 
+                toast('Nome e @username são obrigatórios','error'); 
+                return; 
+            }
+            
+            if(USERS.some(u => u.user === user && u.email !== CURRENT.email)){ 
+                toast('@username já ocupado','error'); 
+                return; 
+            }
+            
+            CURRENT.name = name; 
+            CURRENT.user = user; 
+            CURRENT.bio = bio;
+            
+            // Salvar informações do comércio se for um comércio
+            if (CURRENT.isBusiness) {
+                CURRENT.businessName = document.getElementById('businessName').value;
+                CURRENT.businessType = document.getElementById('businessType').value;
+                CURRENT.businessAddress = document.getElementById('businessAddress').value;
+                
+                // Verificar se já existe um comércio cadastrado para este usuário
+                let userBusiness = BUSINESSES.find(b => b.ownerId === CURRENT.id);
+                if (userBusiness) {
+                    // Atualizar comércio existente
+                    userBusiness.name = CURRENT.businessName;
+                    userBusiness.type = CURRENT.businessType;
+                    userBusiness.address = CURRENT.businessAddress;
+                } else {
+                    // Criar novo comércio
+                    // Em uma implementação real, as coordenadas seriam obtidas via geocoding
+                    userBusiness = {
+                        id: 'b' + Date.now(),
+                        name: CURRENT.businessName,
+                        type: CURRENT.businessType,
+                        address: CURRENT.businessAddress,
+                        lat: -23.5505 + (Math.random() * 0.01 - 0.005), // Coordenadas aleatórias próximas
+                        lng: -46.6333 + (Math.random() * 0.01 - 0.005),
+                        ownerId: CURRENT.id
+                    };
+                    BUSINESSES.push(userBusiness);
+                    saveToStorage('red_businesses', BUSINESSES);
+                }
+            }
+            
+            saveCurrentUser();
+            toast('Perfil salvo','success');
+            
+            document.getElementById('headerAvatar').src = CURRENT.profilePic || (`https://ui-avatars.com/api/?name=${encodeURIComponent(CURRENT.name)}&background=4f8bc9&color=fff`);
+            document.getElementById('headerName').innerText = CURRENT.name;
+        }
+
+        /* ========= Helpers ========= */
+        function saveCurrentUser(){
+            saveToStorage('red_current', CURRENT);
+            const i = USERS.findIndex(u => u.email === CURRENT.email);
+            if(i>=0) { 
+                USERS[i] = CURRENT; 
+                saveToStorage('red_users', USERS); 
+            }
+        }
+
+        function escapeHtml(str){ 
+            if(!str) return ''; 
+            return String(str)
+                .replaceAll('&','&amp;')
+                .replaceAll('<','&lt;')
+                .replaceAll('>','&gt;')
+                .replaceAll('"','&quot;')
+                .replaceAll("'",'&#39;'); 
+        }
+
+        function getFoodTypeName(type) {
+            const foodTypes = {
+                'arroz': 'Arroz',
+                'feijao': 'Feijão',
+                'macarrao': 'Macarrão',
+                'oleo': 'Óleo de Cozinha',
+                'acucar': 'Açúcar',
+                'cafe': 'Café',
+                'farinha': 'Farinha de Trigo',
+                'enlatados': 'Alimentos Enlatados',
+                'outros': 'Outros Alimentos'
+            };
+            
+            return foodTypes[type] || 'Alimento';
+        }
+
+        // Remover classes de erro quando o usuário começar a digitar
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input');
+            inputs.forEach(input => {
+                input.addEventListener('input', function() {
+                    this.classList.remove('input-error');
+                });
+            });
+            
+            // Permitir login com a tecla Enter
+            document.getElementById('loginPass').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    doLogin();
+                }
+            });
+        });
+
+        /* ========= Persist / restore data on load ========= */
+        window.addEventListener('load', ()=>{
+            USERS = loadFromStorage('red_users', []);
+            FEED = loadFromStorage('red_feed', []);
+            CURRENT = loadFromStorage('red_current', null);
+            CHATS = loadFromStorage('red_chats', {});
+            DONATIONS = loadFromStorage('red_donations', {});
+            BUSINESSES = loadFromStorage('red_businesses', []);
+            LOTS = loadFromStorage('red_lots', []);
+            REQUESTS = loadFromStorage('red_requests', []);
+            
+            createSampleData();
+            
+            if(CURRENT){
+                document.getElementById('screen-auth').classList.add('hidden');
+                document.getElementById('screen-app').classList.remove('hidden');
+                
+                document.getElementById('composerAvatar').src = CURRENT.profilePic || (`https://ui-avatars.com/api/?name=${encodeURIComponent(CURRENT.name)}&background=4f8bc9&color=fff`);
+                
+                document.getElementById('headerUser').classList.remove('hidden');
+                document.getElementById('headerAvatar').src = CURRENT.profilePic || (`https://ui-avatars.com/api/?name=${encodeURIComponent(CURRENT.name)}&background=4f8bc9&color=fff`);
+                document.getElementById('headerName').innerText = CURRENT.name;
+                document.getElementById('btnLoginHeader').classList.add('hidden');
+                
+                navTo('feed');
+            } else {
+                document.getElementById('screen-auth').classList.remove('hidden');
+                document.getElementById('screen-app').classList.add('hidden');
+            }
+        });
+
+        // Expor funções globalmente para os botões
+        window.openLogin = openLogin;
+        window.showRegister = showRegister;
+        window.showLogin = showLogin;
+        window.doLogin = doLogin;
+        window.doRegister = doRegister;
+        window.doLogout = doLogout;
+        window.navTo = navTo;
+        window.createPost = createPost;
+        window.saveAccount = saveAccount;
+        window.getUserLocation = getUserLocation;
+        window.donateLot = donateLot;
+        window.requestFood = requestFood;
+        window.openImageModal = openImageModal;
+        window.removeImage = removeImage;
+        window.startConversation = startConversation;
+        window.sendChat = sendChat;
+        window.replyToMessage = replyToMessage;
+        window.cancelReply = cancelReply;
+        window.filterChats = filterChats;
+    </script>
+</body>
+</html>
